@@ -1,26 +1,31 @@
-import express from 'express';
-import { Request, Response } from 'express';
-import cors from 'cors';
-import bodyParser from 'body-parser';
-import { v4 as uuidv4 } from 'uuid';
-import { Server } from 'socket.io';
+import Koa from 'koa';
+import koaSend from 'koa-send';
+import koaStatic from 'koa-static';
+import path from 'path';
 import http from 'http';
+import { Server } from 'socket.io';
 import MessageModel from './model/msgModel';
 import config from '@online-suport-system/config/server'
 
-const app = express();
-const appserver = http.createServer(app);
-const io = new Server(appserver, {
+const app = new Koa();
+app.proxy = true;
+const httpserver = http.createServer(app.callback());
+const io = new Server(httpserver, {
     cors: {
         origin: config.allowOrigin || '*',
         credentials: true,
-        methods: ['GET', 'POST', 'PUT', 'DELETE']
     },
     pingTimeout: 10000,
     pingInterval: 5000,
 });
+
+app.use(
+    koaStatic(path.join(__dirname, '../public'), {
+        maxAge: 1000 * 60 * 60 * 24 * 7,
+        gzip: true
+    }))
+
 io.on('connection', (socket) => {
-    console.log('Socket.IO connected');
     socket.on('new-message', async (data) => {
         const message = new MessageModel({
             sender: data.sender,
@@ -35,8 +40,6 @@ io.on('connection', (socket) => {
         io.emit('messages-loaded', messages.reverse());
     });
 });
-app.use(cors());
-app.use(bodyParser.json());
 /* app.get('/messages', async (req: Request, res: Response) => {
     const messages = await MessageModel.find().sort({ timestamp: -1 }).limit(20).lean();
     res.json(messages.reverse());
